@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d17" />
+  <title>Taiman - 3D 1v1 Brawler</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- ==================== TITLE / CHARACTER SELECT ==================== -->
+  <div id="screen-title" class="screen">
+    <div class="title-wrap">
+      <h1>TAIMAN</h1>
+      <p class="sub">3D 1v1 Arena Brawler</p>
+
+      <label class="name-label">NAME
+        <input id="name-input" maxlength="12" placeholder="YOU" />
+      </label>
+
+      <p class="pick">PICK A FIGHTER</p>
+      <div id="char-list"></div>
+
+      <button id="btn-find" class="primary">FIND MATCH</button>
+      <p class="hint">Portrait phone recommended. Left = move, Right = aim &amp; fire.</p>
+    </div>
+  </div>
+
+  <!-- ==================== MATCHMAKING ==================== -->
+  <div id="screen-queue" class="screen hidden">
+    <div class="queue-wrap">
+      <div class="spinner"></div>
+      <h2>Finding opponent...</h2>
+      <p id="queue-tip">Open this page on another phone to play!</p>
+      <button id="btn-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ==================== GAME ==================== -->
+  <div id="screen-game" class="screen hidden">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- HUD top -->
+    <div id="hud-top">
+      <div class="hp-block">
+        <div class="hp-name" id="hp-you-name">YOU</div>
+        <div class="hp-bar"><div class="hp-fill" id="hp-you-fill"></div></div>
+      </div>
+      <div class="timer" id="hud-timer">2:00</div>
+      <div class="hp-block right">
+        <div class="hp-name" id="hp-opp-name">OPP</div>
+        <div class="hp-bar"><div class="hp-fill opp" id="hp-opp-fill"></div></div>
+      </div>
+    </div>
+
+    <!-- Touch zones (visual) -->
+    <div id="pad-left"  class="pad">
+      <div class="pad-base"></div>
+      <div class="pad-stick" id="stick-left"></div>
+    </div>
+    <div id="pad-right" class="pad">
+      <div class="pad-base aim"></div>
+      <div class="pad-stick aim" id="stick-right"></div>
+    </div>
+
+    <!-- Reload / cooldown indicator -->
+    <div id="cooldown"><div id="cooldown-fill"></div></div>
+
+    <!-- Debug / kill log -->
+    <div id="killfeed"></div>
+  </div>
+
+  <!-- ==================== END SCREEN ==================== -->
+  <div id="screen-end" class="screen hidden">
+    <div class="end-wrap">
+      <h2 id="end-title">VICTORY</h2>
+      <p id="end-sub">GG! Play again?</p>
+      <button id="btn-again" class="primary">REMATCH</button>
+      <button id="btn-home">CHANGE FIGHTER</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

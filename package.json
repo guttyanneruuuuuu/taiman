@@ -1,0 +1,17 @@
+{
+  "name": "taiman",
+  "version": "1.0.0",
+  "description": "3D 1vs1 online arena brawler - mobile portrait, light & quick matches",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
