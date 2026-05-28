@@ -34,6 +34,14 @@ export function setupControls(state) {
   function whichHalf(x) {
     return x < window.innerWidth / 2 ? 'left' : 'right';
   }
+  function rotateLocalVector(rotY, strafe, forward) {
+    const sin = Math.sin(rotY);
+    const cos = Math.cos(rotY);
+    return {
+      x: cos * strafe + sin * forward,
+      z: -sin * strafe + cos * forward,
+    };
+  }
 
   // ignore touches that started on an action button or HUD
   function isUIElement(target) {
@@ -82,7 +90,8 @@ export function setupControls(state) {
           // Drag-release on aim side -> fire in the released direction.
           // Preserve the last aim vector because touchend clears the joystick before the next tick.
           state.releaseFire = true;
-          state.fireAim = { dx: d.dx / padRadius, dy: d.dy / padRadius };
+          const aim = rotateLocalVector(state.me.rotY || 0, d.dx / padRadius, -(d.dy / padRadius));
+          state.fireAim = { dx: aim.x, dy: aim.z };
         }
         d.id = null; d.dx = 0; d.dy = 0; d.active = false;
         clearPad(side);
@@ -131,7 +140,8 @@ export function setupControls(state) {
         let ax = (mouseAim.x - cx) / 120;
         let ay = (mouseAim.y - cy) / 120;
         const m = Math.hypot(ax, ay); if (m > 1) { ax/=m; ay/=m; }
-        state.fireAim = { dx: ax, dy: ay };
+        const aim = rotateLocalVector(state.me.rotY || 0, ax, -ay);
+        state.fireAim = { dx: aim.x, dy: aim.z };
       }
     }
     state.mouseDown = false;
