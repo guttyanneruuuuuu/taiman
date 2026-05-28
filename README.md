@@ -1,45 +1,83 @@
-# Taiman - 3D 1vs1 Online Brawler
+# Taiman — 3D 1v1 Arena Brawler
 
-A lightweight 3D online 1vs1 arena game playable in your phone browser (portrait mode).
-Inspired by Brawl Stars but in 3D, with simple touch controls anyone can pick up.
+スマホ縦持ち向けの軽量 3D 1v1 対戦ゲーム。
+左で移動、右でエイム & 射撃、上のボタンで **ジャンプ / ダッシュ / 必殺技**。
+**3Dならではの立体的な攻撃と回避** が遊びの中心です。
 
-## Concept
-- **Portrait phone** layout. Left half: movement joystick. Right half: aim & shoot (drag).
-- **2-minute matches** designed for "one more match!" replay value.
-- **5 unique characters** with different weapons & playstyles.
-- **One big arena map** with a central gimmick (jump pad + hazard).
-- Built with **Three.js** (kept lean — low-poly, no shadows) + **Node.js / ws** for online matchmaking.
+## 遊び方
 
-## How to run
+GitHub Pages で公開されているサイトを開くだけ。インストール不要。
+
+3つのモード:
+
+1. **SOLO vs BOT** — タップ即プレイ。CPU相手の練習&一人遊び。
+2. **CREATE ROOM** — 合言葉を発行して友達に教える → 友達が JOIN すれば対戦開始。
+3. **JOIN ROOM** — 友達からもらった合言葉を入力して参加。
+
+> オンライン対戦は WebRTC P2P (PeerJS の公開ブローカー経由) で、サーバー不要・GitHub Pages だけで完結します。
+
+## キャラクター (5体)
+
+| # | 名前    | 武器     | 必殺技 (3D要素) |
+|---|---------|----------|------------------|
+| 0 | BLAZE   | 散弾銃   | BURST RUSH — 前方に高速ダッシュして接触で大ダメージ |
+| 1 | SNIPER  | ライフル | PIERCE — 障害物の低いカバーを越えて貫通する遠距離レーザー |
+| 2 | ROCKET  | ロケット | MORTAR — 山なり弾道の砲撃。地形を越えて上から叩く |
+| 3 | RAPID   | SMG      | HOVER — 短時間浮上して空中から連射 |
+| 4 | SLASH   | 近接斬撃 | AERIAL SLAM — 高くジャンプして真下に叩きつけ |
+
+## 3Dならではの要素
+
+- **高さ判定**: 低い障害物 (カバー) は **ジャンプで弾を避けられる / 越えて撃てる**。高い壁は越えられない。
+- **ジャンプ**: 小ホップ。タイミングよく使うと弾を避けられる。
+- **ダッシュ**: 短距離の高速移動。横ダッシュで弾道を切る。
+- **ジャンプ台**: マップ中央のオレンジ円。乗ると高く跳ねる。
+- **回転する円柱**: マップ中央近くで時計回りと反時計回りに動く障害物。動くカバー。
+- **ヒールオーブ**: 18秒ごとに復活。HP+30。
+
+## マップ
+
+- 48 × 48 の広めアリーナ
+- 対称配置の低カバー / 高カバー
+- 中央: ジャンプ台 + ヒールオーブ + 周回する動的カバー2本
+
+## 操作
+
+| 操作 | スマホ | PC (テスト用) |
+|------|--------|----------------|
+| 移動 | 左半分でドラッグ | WASD / 矢印 |
+| エイム | 右半分でドラッグ | マウス押下 (ドラッグでエイム) |
+| 射撃 | 右半分を離す or 連射武器は押しっぱ | マウスを離す / ホールド |
+| ジャンプ | 上中央 JUMP ボタン | Space |
+| ダッシュ | 上中央 DASH ボタン | Shift |
+| 必殺技 | 上中央 SKILL ボタン | Q |
+
+## 開発
+
+完全に静的なフロントエンドのみ。サーバー不要。
 
 ```bash
-npm install
-npm start
+# 適当な静的サーバーで開発
+python3 -m http.server 8000
+# → http://localhost:8000 をスマホ等で開く
 ```
 
-Then open `http://localhost:3000` on two phones (or two browser tabs) and tap "Find Match".
+URL に `?dev=1` を付けると、タイトルをスキップして即 BOT 対戦に入る (動作確認用)。
 
-## Characters
-| # | Name      | Weapon       | Style                                |
-|---|-----------|--------------|--------------------------------------|
-| 1 | Blaze     | Shotgun      | Close-range burst                    |
-| 2 | Sniper    | Rifle        | Long-range single shot, high damage  |
-| 3 | Rocket    | Rocket       | Slow but big AoE                     |
-| 4 | Rapid     | SMG          | Fast small-damage spray              |
-| 5 | Slash     | Dash slash   | Melee dash attack                    |
+## ファイル構成
 
-## Controls
-- **Left thumb**: drag to move.
-- **Right thumb**: drag to aim, release (or hold) to fire. Yellow 3D arc shows aim.
-- HP bar above each character.
+```
+/index.html        ルートの index (GitHub Pages 直で見られる)
+/css/style.css
+/js/main.js        ゲームのメインループ
+/js/characters.js  キャラ定義
+/js/map.js         マップ生成・衝突・レイキャスト
+/js/player.js      プレイヤーメッシュ
+/js/controls.js    タッチ&キーボード入力
+/js/ai.js          AIボット
+/js/net.js         BotNet / PeerNet 抽象化
+```
 
-## Map
-- Large square arena ~ 40x40 units, with cover boxes/walls scattered.
-- **Center gimmick**: a jump pad (launches you up) and a regenerating health orb every 15s.
+## ライセンス
 
-## Architecture
-- `server/index.js` — Express static + WebSocket relay + matchmaking queue + server-side authoritative timer.
-- `public/` — Three.js client (single-page).
-
-## License
 MIT
