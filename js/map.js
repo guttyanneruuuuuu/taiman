@@ -1,10 +1,10 @@
 // =====================================================
 // Arena map.
-// - 48x48 ground
+// - 72x72 bright open ground (much wider than the first build)
 // - Symmetric cover so it's fair regardless of which spawn
 // - Center: jump pad + heal orb (regen 18s)
-// - Moving gimmick: 2 rotating circular pillars that act as
-//   moving cover and force you to use jumps/dashes around them
+// - 3D-only gimmicks: low cover can be jumped over, updraft pads,
+//   elevated ring markers, and moving pillars that require vertical dodges
 // =====================================================
 import * as THREE from 'three';
 
@@ -19,7 +19,7 @@ function rng(seed) {
   };
 }
 
-export const MAP_SIZE = 48;
+export const MAP_SIZE = 72;
 export const WALL_HEIGHT = 2.4;
 export const COVER_LOW_H = 1.1;   // duckable / jumpable cover
 export const COVER_TALL_H = 2.0;  // tall cover (must go around)
@@ -41,37 +41,49 @@ export function generateMap(seed) {
     obstacles.push({ x:-x, z:-z, sx, sz, h, kind });
   }
 
-  // Hand-placed cover (mix of low/tall)
-  addPair( 7,  8, 3.2, 1.2, COVER_LOW_H);
-  addPair(11,  2, 1.2, 4.0, COVER_TALL_H);
-  addPair(14, -7, 2.4, 2.4, COVER_TALL_H);
-  addPair( 4,-12, 3.8, 1.0, COVER_LOW_H);
-  addPair(-9, 12, 1.2, 3.6, COVER_TALL_H);
-  addPair( 2,  4, 1.8, 1.0, COVER_LOW_H);
-  addPair(-3, -8, 2.0, 1.8, COVER_LOW_H);
+  // Hand-placed cover (mix of low/tall). Wider lanes give room for 1v1 mind games.
+  addPair(  7,   8, 3.2, 1.2, COVER_LOW_H);
+  addPair( 11,   2, 1.2, 4.0, COVER_TALL_H);
+  addPair( 16,  -9, 2.8, 2.8, COVER_TALL_H);
+  addPair(  5, -15, 4.6, 1.0, COVER_LOW_H);
+  addPair(-13,  16, 1.2, 4.8, COVER_TALL_H);
+  addPair(  2,   5, 2.0, 1.0, COVER_LOW_H);
+  addPair( -4, -10, 2.6, 1.8, COVER_LOW_H);
+  addPair( 21,  12, 6.0, 1.0, COVER_LOW_H);
+  addPair( 24,  -2, 1.2, 5.6, COVER_TALL_H);
+  addPair(-18,  -6, 4.0, 1.0, COVER_LOW_H);
+  addPair(  9,  23, 1.0, 4.2, COVER_LOW_H);
+  addPair( -8, -24, 4.8, 1.0, COVER_TALL_H);
 
-  // A few small random pairs (seeded)
-  for (let i = 0; i < 2; i++) {
-    const x = 3 + rand() * 11;
-    const z = 3 + rand() * 11;
-    const sx = 1.2 + rand() * 1.4;
-    const sz = 1.2 + rand() * 1.4;
-    const h = rand() < 0.5 ? COVER_LOW_H : COVER_TALL_H;
+  // Seeded mini covers outside the center so every match feels slightly different.
+  for (let i = 0; i < 4; i++) {
+    const x = 8 + rand() * 18;
+    const z = 8 + rand() * 18;
+    const sx = 1.2 + rand() * 2.0;
+    const sz = 1.0 + rand() * 2.0;
+    const h = rand() < 0.58 ? COVER_LOW_H : COVER_TALL_H;
     addPair(x * (rand() < 0.5 ? -1 : 1), z * (rand() < 0.5 ? -1 : 1), sx, sz, h);
   }
 
-  // Moving pillars (rotating around center) — handled at runtime in main.js
-  // They are circles of radius 1.0, orbiting at radius 6.5 (mirrored), one slow one faster.
+  // Moving pillars (rotating around center) — moving tall cover for dash/jump timing.
   const movers = [
-    { orbitR: 6.8, angle: 0,           speed:  0.6, radius: 1.0, h: COVER_TALL_H },
-    { orbitR: 6.8, angle: Math.PI,     speed: -0.6, radius: 1.0, h: COVER_TALL_H },
+    { orbitR: 8.4, angle: 0,           speed:  0.50, radius: 1.05, h: COVER_TALL_H },
+    { orbitR: 8.4, angle: Math.PI,     speed: -0.50, radius: 1.05, h: COVER_TALL_H },
+    { orbitR: 13.2, angle: Math.PI/2,  speed:  0.34, radius: 0.90, h: COVER_LOW_H  },
+    { orbitR: 13.2, angle:-Math.PI/2,  speed: -0.34, radius: 0.90, h: COVER_LOW_H  },
   ];
 
   return {
     obstacles,
     movers,
     pad:  { x: 0, z: 0 },
-    heal: { x: 0, z: -6 },
+    heal: { x: 0, z: -8 },
+    updrafts: [
+      { x: -17, z:  17, r: 1.55, boost: 17 },
+      { x:  17, z: -17, r: 1.55, boost: 17 },
+      { x: -24, z:  -4, r: 1.35, boost: 14 },
+      { x:  24, z:   4, r: 1.35, boost: 14 },
+    ],
   };
 }
 
@@ -79,19 +91,19 @@ export function generateMap(seed) {
 export function buildMapMesh(mapData) {
   const group = new THREE.Group();
 
-  // Ground (calm slate)
-  const groundMat = new THREE.MeshLambertMaterial({ color: 0x2e3445 });
+  // Ground (bright warm white, non-neon)
+  const groundMat = new THREE.MeshLambertMaterial({ color: 0xf4f7fb });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), groundMat);
   ground.rotation.x = -Math.PI / 2;
   group.add(ground);
 
-  // Tile lines (subtle, no neon)
-  const grid = new THREE.GridHelper(MAP_SIZE, 24, 0x3a4258, 0x252b3a);
+  // Tile lines (subtle blue-grey, no glow)
+  const grid = new THREE.GridHelper(MAP_SIZE, 36, 0xc9d7ef, 0xe6edf7);
   grid.position.y = 0.01;
   group.add(grid);
 
-  // Outer ring (slightly darker to mark playable zone)
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0x1a1f2b });
+  // Outer ring (clear playable zone border)
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xdbe6f5 });
   const ringGeo = new THREE.RingGeometry(MAP_SIZE/2 - 0.6, MAP_SIZE/2 + 6, 32);
   const ring = new THREE.Mesh(ringGeo, ringMat);
   ring.rotation.x = -Math.PI / 2;
@@ -100,9 +112,9 @@ export function buildMapMesh(mapData) {
 
   // Obstacles
   const colliders = [];
-  const coverLowMat  = new THREE.MeshLambertMaterial({ color: 0x4a5063 });
-  const coverTallMat = new THREE.MeshLambertMaterial({ color: 0x3c4255 });
-  const wallMat      = new THREE.MeshLambertMaterial({ color: 0x353b4d });
+  const coverLowMat  = new THREE.MeshLambertMaterial({ color: 0x75a7e6 });
+  const coverTallMat = new THREE.MeshLambertMaterial({ color: 0xe36f6f });
+  const wallMat      = new THREE.MeshLambertMaterial({ color: 0xffffff });
   mapData.obstacles.forEach((o) => {
     const mat = o.kind === 'wall' ? wallMat : (o.h >= COVER_TALL_H ? coverTallMat : coverLowMat);
     const m = new THREE.Mesh(new THREE.BoxGeometry(o.sx, o.h, o.sz), mat);
@@ -117,14 +129,14 @@ export function buildMapMesh(mapData) {
   });
 
   // Center jump pad
-  const padMat = new THREE.MeshLambertMaterial({ color: 0xd97c4f });
+  const padMat = new THREE.MeshLambertMaterial({ color: 0x2f80ed });
   const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.18, 24), padMat);
   pad.position.set(mapData.pad.x, 0.09, mapData.pad.z);
   group.add(pad);
   mapData.padMesh = pad;
 
   // Heal orb
-  const healMat = new THREE.MeshLambertMaterial({ color: 0x6fb59a });
+  const healMat = new THREE.MeshLambertMaterial({ color: 0x35b779 });
   const heal = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), healMat);
   heal.position.set(mapData.heal.x, 1.1, mapData.heal.z);
   group.add(heal);
@@ -133,7 +145,7 @@ export function buildMapMesh(mapData) {
   mapData.healCooldown = 0;
 
   // Moving pillars (visual + collider stored in dataset, updated each tick)
-  const moverMat = new THREE.MeshLambertMaterial({ color: 0x6c7488 });
+  const moverMat = new THREE.MeshLambertMaterial({ color: 0xffb15f });
   mapData.moverMeshes = [];
   mapData.moverColliders = [];
   for (const mv of mapData.movers) {
@@ -145,10 +157,29 @@ export function buildMapMesh(mapData) {
     colliders.push(col);
   }
 
-  // Lights — flat soft
-  const amb = new THREE.AmbientLight(0xffffff, 0.7);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.55);
-  dir.position.set(10, 18, 6);
+  // Updraft jump circles: 3D-only vertical routes to dodge shots and shoot over low cover.
+  const upMat = new THREE.MeshLambertMaterial({ color: 0x5aa7ff, transparent: true, opacity: 0.82 });
+  mapData.updraftMeshes = [];
+  for (const u of mapData.updrafts || []) {
+    const up = new THREE.Mesh(new THREE.CylinderGeometry(u.r, u.r, 0.12, 28), upMat);
+    up.position.set(u.x, 0.07, u.z);
+    group.add(up);
+    mapData.updraftMeshes.push(up);
+  }
+
+  // Raised height markers make airborne states readable on phones.
+  const arcMat = new THREE.MeshBasicMaterial({ color: 0x2f80ed, transparent: true, opacity: 0.42, side: THREE.DoubleSide });
+  for (let i = 0; i < 4; i++) {
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(7 + i * 5, 0.035, 6, 72), arcMat);
+    arc.rotation.x = Math.PI / 2;
+    arc.position.y = 0.12 + i * 0.012;
+    group.add(arc);
+  }
+
+  // Lights — bright soft daylight
+  const amb = new THREE.AmbientLight(0xffffff, 0.95);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.72);
+  dir.position.set(12, 22, 8);
   group.add(amb, dir);
 
   return { group, colliders };
@@ -167,9 +198,11 @@ export function tickMovers(mapData, dt) {
   }
 }
 
-// Collide a cylinder (radius r) around (x,z) with all colliders, return adjusted [x,z]
-export function collideXZ(x, z, r, colliders) {
+// Collide a cylinder (radius r) around (x,z) with all colliders, return adjusted [x,z].
+// playerY lets airborne fighters jump over low cover, which is the core 3D dodge mechanic.
+export function collideXZ(x, z, r, colliders, playerY = 0) {
   for (const c of colliders) {
+    if (playerY > c.h + 0.18 && c.kind !== 'wall') continue;
     if (c.type === 'aabb') {
       const closestX = Math.max(c.minX, Math.min(x, c.maxX));
       const closestZ = Math.max(c.minZ, Math.min(z, c.maxZ));

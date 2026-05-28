@@ -79,8 +79,10 @@ export function setupControls(state) {
         const d = touchData[side];
         if (d.id !== t.identifier) continue;
         if (side === 'right') {
-          // tap or short drag-release on aim side -> fire
+          // Drag-release on aim side -> fire in the released direction.
+          // Preserve the last aim vector because touchend clears the joystick before the next tick.
           state.releaseFire = true;
+          state.fireAim = { dx: d.dx / padRadius, dy: d.dy / padRadius };
         }
         d.id = null; d.dx = 0; d.dy = 0; d.active = false;
         clearPad(side);
@@ -122,7 +124,16 @@ export function setupControls(state) {
     state.mouseDown = true;
   });
   window.addEventListener('mouseup', (e) => {
-    if (state.mouseDown) state.releaseFire = true;
+    if (state.mouseDown) {
+      state.releaseFire = true;
+      if (mouseAim) {
+        const cx = window.innerWidth/2, cy = window.innerHeight/2 + 80;
+        let ax = (mouseAim.x - cx) / 120;
+        let ay = (mouseAim.y - cy) / 120;
+        const m = Math.hypot(ax, ay); if (m > 1) { ax/=m; ay/=m; }
+        state.fireAim = { dx: ax, dy: ay };
+      }
+    }
     state.mouseDown = false;
   });
 

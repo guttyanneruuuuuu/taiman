@@ -14,6 +14,7 @@ import { createAIController } from './ai.js';
 const state = {
   inMatch: false,
   releaseFire: false,
+  fireAim: null,
   mouseDown: false,
   pressJump: false,
   pressDash: false,
@@ -269,9 +270,28 @@ function setupPeerHandlers() {
   });
   net.on('shoot', (m) => {
     const char = getCharacter(state.oppCharId);
+    const dx = m.dir?.[0] ?? 0;
+    const dz = m.dir?.[1] ?? 1;
+    if (m.kind === 'mortar') {
+      const dist = Math.min(18, Math.max(4, Math.hypot((m.tx ?? m.pos[0]) - m.pos[0], (m.tz ?? m.pos[1]) - m.pos[1])));
+      spawnMortar({
+        ox: m.pos[0], oz: m.pos[1],
+        tx: m.tx ?? (m.pos[0] + dx * dist),
+        tz: m.tz ?? (m.pos[1] + dz * dist),
+        owner: 'opp',
+        damage: m.dmg ?? char.skill.damage ?? char.weapon.dmgPerPellet,
+        radius: m.radius ?? char.skill.radius ?? 2.8,
+      });
+      return;
+    }
+    if (m.kind === 'laser') {
+      const len = m.range ?? char.skill.range ?? 26;
+      spawnLaser(m.pos[0], m.pos[1], dx, dz, len, 'opp', m.dmg ?? char.skill.damage ?? 40);
+      return;
+    }
     spawnBullets({
       char, ox: m.pos[0], oz: m.pos[1], oy: m.y || 1.0,
-      dx: m.dir[0], dz: m.dir[1],
+      dx, dz,
       owner: 'opp', kind: m.kind, h: m.h || 1.0,
       arc: m.arc || false, dmgOverride: m.dmg,
     });
@@ -302,12 +322,15 @@ function setupPeerHandlers() {
     updateHpBars();
   });
   net.on('heal', (m) => {
-    // Opponent picked up the heal orb (notify host so host hides orb authoritatively)
+    // Opponent picked up the heal orb. Host is authoritative for HP and orb respawn.
     if (state.isAuthority) {
-      // mark heal taken by opponent
+      const maxOpp = getCharacter(state.oppCharId).hp;
+      state.hpOpp = Math.min(maxOpp, state.hpOpp + clamp(m.amount ?? 30, 0, 40));
       mapData.healAvailable = false;
       mapData.healMesh.visible = false;
       mapData.healCooldown = 18;
+      updateHpBars();
+      net.send({ t:'hp', you: state.hpYou, opp: state.hpOpp });
     }
   });
   net.on('timer', (m) => {
@@ -359,8 +382,8 @@ function setupRenderer() {
   renderer.setSize(window.innerWidth, window.innerHeight, false);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x161a25);
-  scene.fog = new THREE.Fog(0x161a25, 28, 70);
+  scene.background = new THREE.Color(0xf8fbff);
+  scene.fog = new THREE.Fog(0xf8fbff, 38, 96);
 
   camera = new THREE.PerspectiveCamera(58, window.innerWidth/window.innerHeight, 0.1, 200);
 
@@ -377,8 +400,8 @@ function startMatch(seed, isBotMatch) {
   if (!renderer) setupRenderer();
 
   scene.clear();
-  scene.background = new THREE.Color(0x161a25);
-  scene.fog = new THREE.Fog(0x161a25, 28, 70);
+  scene.background = new THREE.Color(0xf8fbff);
+  scene.fog = new THREE.Fog(0xf8fbff, 38, 96);
   aimLine = null;
   mortarPreview = null;
 
@@ -389,8 +412,8 @@ function startMatch(seed, isBotMatch) {
   scene.add(mapGroup);
 
   // Spawn
-  const spawnA = { x: -MAP_SIZE/2 + 5, z: -MAP_SIZE/2 + 5 };
-  const spawnB = { x:  MAP_SIZE/2 - 5, z:  MAP_SIZE/2 - 5 };
+  const spawnA = { x: -MAP_SIZE/2 + 7, z: -MAP_SIZE/2 + 7 };
+  const spawnB = { x:  MAP_SIZE/2 - 7, z:  MAP_SIZE/2 - 7 };
   const mySpawn  = state.youSlot === 0 ? spawnA : spawnB;
   const oppSpawn = state.youSlot === 0 ? spawnB : spawnA;
 
@@ -514,7 +537,7 @@ function tick(dt) {
 
   let nx = state.me.x + moveX;
   let nz = state.me.z + moveZ;
-  [nx, nz] = collideXZ(nx, nz, 0.5, mapColliders);
+  [nx, nz] = collideXZ(nx, nz, 0.5, mapColliders, state.me.y);
   state.me.vx = (nx - state.me.x) / Math.max(dt, 0.001);
   state.me.vz = (nz - state.me.z) / Math.max(dt, 0.001);
   state.me.x = nx; state.me.z = nz;
@@ -583,13 +606,30 @@ function tick(dt) {
   // Per-skill ongoing logic
   if (state.me.skillState) tickSkill(dt, myChar);
 
-  // -------- Center gimmicks (jump pad + heal orb) --------
+  // -------- Center gimmicks (jump pad + heal orb + updrafts) --------
   mapData.padMesh.rotation.y += dt * 0.6;
   const pdx = state.me.x - mapData.pad.x;
   const pdz = state.me.z - mapData.pad.z;
   if (pdx*pdx + pdz*pdz < 1.4*1.4 && state.me.y <= 0.05 && state.me.vy <= 0.01) {
     state.me.vy = 14;
     state.me.y = 0.05;
+    flashText('AIR DODGE', '#2f80ed');
+  }
+
+  for (let i = 0; i < (mapData.updrafts || []).length; i++) {
+    const u = mapData.updrafts[i];
+    const mesh = mapData.updraftMeshes?.[i];
+    if (mesh) mesh.rotation.y -= dt * 1.8;
+    const ux = state.me.x - u.x;
+    const uz = state.me.z - u.z;
+    if (ux*ux + uz*uz < u.r*u.r && state.me.y <= 0.08 && state.me.vy <= 0.2) {
+      state.me.vy = u.boost;
+      state.me.y = 0.06;
+      // Keep momentum so you can launch into diagonal shots, not just bounce in place.
+      state.me.x += Math.sin(state.me.rotY) * 0.18;
+      state.me.z += Math.cos(state.me.rotY) * 0.18;
+      flashText('UPDRAFT', '#2f80ed');
+    }
   }
 
   if (mapData.healAvailable) {
@@ -604,8 +644,9 @@ function tick(dt) {
       mapData.healAvailable = false;
       mapData.healMesh.visible = false;
       mapData.healCooldown = 18;
-      net?.send({ t:'heal' });
-      flashText(`+${healAmt} HP`, '#6fb59a');
+      net?.send({ t:'heal', amount: healAmt });
+      if (state.isAuthority && net && !net.isBot) net.send({ t:'hp', you: state.hpYou, opp: state.hpOpp });
+      flashText(`+${healAmt} HP`, '#35b779');
       updateHpBars();
     }
   } else {
@@ -637,13 +678,17 @@ function tick(dt) {
   }
   // Tap-release fire (rifle / rocket / slash)
   if (state.releaseFire && !holdToFire && state.cooldown === 0 && !state.me.skillState) {
-    if (state.me.aim.active) {
+    const fa = state.fireAim;
+    if (fa && Math.hypot(fa.dx, fa.dy) > 0.05) {
+      doShoot(myChar, fa.dx, fa.dy);
+    } else if (state.me.aim.active) {
       doShoot(myChar, state.me.aim.dx, state.me.aim.dy);
     } else {
       doShoot(myChar, Math.sin(state.me.rotY), Math.cos(state.me.rotY));
     }
   }
   state.releaseFire = false;
+  state.fireAim = null;
   updateCooldownBars();
 
   // -------- AI (bot) --------
@@ -671,10 +716,11 @@ function tick(dt) {
   }
 
   // -------- Camera follow --------
-  const camHeight = 16;
-  const camBack   = 11;
-  const lookOffX = (state.me.aim?.active ? state.me.aim.dx : 0) * 2.2;
-  const lookOffZ = (state.me.aim?.active ? state.me.aim.dy : 0) * 2.2;
+  const portrait = window.innerHeight >= window.innerWidth;
+  const camHeight = portrait ? 18.5 : 16.5;
+  const camBack   = portrait ? 12.5 : 11;
+  const lookOffX = (state.me.aim?.active ? state.me.aim.dx : 0) * 3.2;
+  const lookOffZ = (state.me.aim?.active ? state.me.aim.dy : 0) * 3.2;
   const camTarget = new THREE.Vector3(state.me.x + lookOffX, state.me.y * 0.3, state.me.z + lookOffZ);
   const camPos = new THREE.Vector3(state.me.x, camHeight + state.me.y * 0.2, state.me.z + camBack);
   camera.position.lerp(camPos, 0.16);
@@ -767,7 +813,7 @@ function tickAI(dt) {
     nx = state.opp.x + mvx * speed * dt;
     nz = state.opp.z + mvz * speed * dt;
   }
-  [nx, nz] = collideXZ(nx, nz, 0.5, mapColliders);
+  [nx, nz] = collideXZ(nx, nz, 0.5, mapColliders, state.opp.y || 0);
   state.opp.lastX = state.opp.x; state.opp.lastZ = state.opp.z;
   state.opp.x = nx; state.opp.z = nz;
   state.opp.vx = (state.opp.x - state.opp.lastX) / Math.max(dt, 0.001);
@@ -849,7 +895,7 @@ function activateSkill(char) {
     }
     case 'mortar': {
       // Throw an arcing bomb to where the aim points (clamped distance)
-      const dist = Math.min(14, 4 + Math.hypot(state.me.aim.dx||0, state.me.aim.dy||0) * 12);
+      const dist = Math.min(18, 5 + Math.hypot(state.me.aim.dx||0, state.me.aim.dy||0) * 16);
       const tx = state.me.x + dx * dist;
       const tz = state.me.z + dz * dist;
       spawnMortar({ ox: state.me.x, oz: state.me.z, tx, tz, owner:'me',
@@ -979,12 +1025,12 @@ function drawAimIndicator(char, input) {
   if (!aimLine) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    const mat = new THREE.LineBasicMaterial({ color: 0xd97c4f, transparent: true, opacity: 0.85 });
+    const mat = new THREE.LineBasicMaterial({ color: 0x2f80ed, transparent: true, opacity: 0.9 });
     aimLine = new THREE.Line(geo, mat);
     scene.add(aimLine);
 
     const tipGeo = new THREE.RingGeometry(0.25, 0.4, 18);
-    const tipMat = new THREE.MeshBasicMaterial({ color: 0xd97c4f, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+    const tipMat = new THREE.MeshBasicMaterial({ color: 0x2f80ed, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
     aimLine.userData.tip = new THREE.Mesh(tipGeo, tipMat);
     aimLine.userData.tip.rotation.x = -Math.PI/2;
     scene.add(aimLine.userData.tip);
@@ -1007,7 +1053,7 @@ function drawAimIndicator(char, input) {
     const tz = state.me.z + dz * dist;
     if (!mortarPreview) {
       const rg = new THREE.RingGeometry(2.5, 2.9, 32);
-      const rm = new THREE.MeshBasicMaterial({ color: 0xd97c4f, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+      const rm = new THREE.MeshBasicMaterial({ color: 0xe35252, side: THREE.DoubleSide, transparent: true, opacity: 0.42 });
       mortarPreview = new THREE.Mesh(rg, rm);
       mortarPreview.rotation.x = -Math.PI/2;
       scene.add(mortarPreview);
@@ -1020,7 +1066,7 @@ function drawAimIndicator(char, input) {
 
   const ox = state.me.x, oz = state.me.z;
   const wl = char.weapon.bulletSpeed * char.weapon.bulletLife;
-  const maxLen = Math.min(wl, 14);
+  const maxLen = Math.min(wl, 22);
   const bulletH = (char.weapon.verticalHeight || 1.0) + (state.me.y || 0);
   const hitT = raycastMap(ox, oz, dx, dz, maxLen, mapColliders, bulletH);
   const ex = ox + dx * hitT;
@@ -1097,10 +1143,10 @@ function spawnBullets({ char, ox, oz, oy=1.0, dx, dz, owner, kind, h=1.0, arc=fa
   spawnFlash(ox + dx * 0.7, oz + dz * 0.7, bulletColor(kind, owner));
 }
 function bulletColor(kind, owner) {
-  if (kind === 'rocket') return 0xe07a4a;
-  if (kind === 'slash')  return 0xc8d4e0;
-  if (kind === 'laser')  return owner === 'me' ? 0xff9a6c : 0xff6c8a;
-  return owner === 'me' ? 0xf0c188 : 0xff8a8a;
+  if (kind === 'rocket') return 0xe35252;
+  if (kind === 'slash')  return 0x2f80ed;
+  if (kind === 'laser')  return owner === 'me' ? 0x2f80ed : 0xe35252;
+  return owner === 'me' ? 0x2f80ed : 0xe35252;
 }
 
 function spawnMortar({ ox, oz, tx, tz, owner, damage, radius }) {
@@ -1113,13 +1159,13 @@ function spawnMortar({ ox, oz, tx, tz, owner, damage, radius }) {
   const g = 22;
   const vy = g * T / 2 + 1.5;
 
-  const mat = new THREE.MeshLambertMaterial({ color: 0xd97c4f });
+  const mat = new THREE.MeshLambertMaterial({ color: owner === 'me' ? 0x2f80ed : 0xe35252 });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat);
   mesh.position.set(ox, startY, oz);
   scene.add(mesh);
   // Shadow ring to telegraph landing position
   const ringGeo = new THREE.RingGeometry(radius - 0.3, radius, 28);
-  const ringMat = new THREE.MeshBasicMaterial({ color: owner === 'me' ? 0xd97c4f : 0xd96a6a, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+  const ringMat = new THREE.MeshBasicMaterial({ color: owner === 'me' ? 0x2f80ed : 0xe35252, side: THREE.DoubleSide, transparent: true, opacity: 0.46 });
   const ring = new THREE.Mesh(ringGeo, ringMat);
   ring.rotation.x = -Math.PI / 2;
   ring.position.set(tx, 0.06, tz);
@@ -1178,18 +1224,18 @@ function updateBullets(dt) {
       b.mesh.position.set(b.x, b.y, b.z);
       if (b.y <= 0.0 || b.life <= 0) {
         // detonate
-        spawnExplosion(b.tx, b.z, b.radius * 1.05, 0xe07a4a);
+        spawnExplosion(b.tx, b.tz, b.radius * 1.05, b.owner === 'me' ? 0x2f80ed : 0xe35252);
         scene.remove(b.mesh);
         scene.remove(b.ringMesh);
         if (b.owner === 'me') {
           const dx = oppMesh.position.x - b.tx;
-          const dz = oppMesh.position.z - b.z;
+          const dz = oppMesh.position.z - b.tz;
           if (dx*dx + dz*dz < b.radius * b.radius && (oppMesh.position.y || 0) < 2.4) {
             applyDamageToOpp(b.dmg);
           }
         } else {
           const dx = state.me.x - b.tx;
-          const dz = state.me.z - b.z;
+          const dz = state.me.z - b.tz;
           if (dx*dx + dz*dz < b.radius * b.radius && state.me.y < 2.4) {
             applyDamageToMe(b.dmg);
           }
@@ -1238,7 +1284,7 @@ function updateBullets(dt) {
 
     if ((hitPlayer && !b.piercing) || hitMap || b.life <= 0) {
       if (b.kind === 'rocket' && b.explodeRadius) {
-        spawnExplosion(b.x, b.z, b.explodeRadius, 0xe07a4a);
+        spawnExplosion(b.x, b.z, b.explodeRadius, b.owner === 'me' ? 0x2f80ed : 0xe35252);
         if (b.owner === 'me' && !hitPlayer) {
           const ex = oppMesh.position.x, ez = oppMesh.position.z;
           const ddx = ex - b.x, ddz = ez - b.z;
@@ -1321,7 +1367,7 @@ function spawnHit(x, z) {
   scene.add(m);
   state.effects.push({ mesh:m, life:0.22, update:(e,dt)=>{ e.mesh.material.opacity *= 0.85; e.mesh.scale.multiplyScalar(1.2);} });
 }
-function spawnExplosion(x, z, r, color = 0xe07a4a) {
+function spawnExplosion(x, z, r, color = 0xe35252) {
   const m = new THREE.Mesh(new THREE.SphereGeometry(r * 0.5, 16, 12),
     new THREE.MeshBasicMaterial({ color, transparent:true, opacity: 0.85 }));
   m.position.set(x, 1.0, z);
