@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f2430" />
+  <title>Taiman - 3D 1v1 Arena</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <!-- ============ TITLE ============ -->
+  <div id="screen-title" class="screen">
+    <div class="title-wrap">
+      <div class="logo">
+        <div class="logo-mark">T</div>
+        <div class="logo-text">
+          <h1>TAIMAN</h1>
+          <p class="sub">3D 1v1 Arena</p>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>NAME</span>
+        <input id="name-input" maxlength="10" placeholder="YOU" />
+      </label>
+
+      <p class="section-label">FIGHTER</p>
+      <div id="char-list"></div>
+      <div id="char-info">
+        <div class="char-info-name" id="char-info-name">—</div>
+        <div class="char-info-desc" id="char-info-desc">—</div>
+        <div class="char-info-stats" id="char-info-stats"></div>
+      </div>
+
+      <p class="section-label">MODE</p>
+      <div class="mode-list">
+        <button class="mode-btn primary" data-mode="bot">
+          <span class="mode-title">SOLO vs BOT</span>
+          <span class="mode-sub">CPU相手にすぐ対戦</span>
+        </button>
+        <button class="mode-btn" data-mode="host">
+          <span class="mode-title">CREATE ROOM</span>
+          <span class="mode-sub">合言葉を作って友達を招待</span>
+        </button>
+        <button class="mode-btn" data-mode="join">
+          <span class="mode-title">JOIN ROOM</span>
+          <span class="mode-sub">合言葉を入力して参加</span>
+        </button>
+      </div>
+
+      <p class="hint">縦持ち推奨。左で移動 / 右でエイム&攻撃 / 中央上のボタンでジャンプ&ダッシュ。</p>
+    </div>
+  </div>
+
+  <!-- ============ ROOM (host/join) ============ -->
+  <div id="screen-room" class="screen hidden">
+    <div class="room-wrap">
+      <div id="room-host" class="room-section hidden">
+        <h2>CREATE ROOM</h2>
+        <p class="room-help">下の合言葉を相手に伝えてね。</p>
+        <div id="room-code" class="room-code">------</div>
+        <button id="btn-copy" class="ghost">合言葉をコピー</button>
+        <div class="room-status" id="room-status-host">合言葉を発行中…</div>
+      </div>
+
+      <div id="room-join" class="room-section hidden">
+        <h2>JOIN ROOM</h2>
+        <p class="room-help">相手の合言葉を入力してね。</p>
+        <input id="join-code-input" class="code-input" maxlength="6" placeholder="合言葉" />
+        <button id="btn-join-go" class="primary">JOIN</button>
+        <div class="room-status" id="room-status-join"></div>
+      </div>
+
+      <button id="btn-room-back" class="ghost">もどる</button>
+    </div>
+  </div>
+
+  <!-- ============ GAME ============ -->
+  <div id="screen-game" class="screen hidden">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud-top">
+      <div class="hp-block">
+        <div class="hp-name" id="hp-you-name">YOU</div>
+        <div class="hp-bar"><div class="hp-fill" id="hp-you-fill"></div></div>
+      </div>
+      <div class="timer" id="hud-timer">2:00</div>
+      <div class="hp-block right">
+        <div class="hp-name" id="hp-opp-name">OPP</div>
+        <div class="hp-bar"><div class="hp-fill opp" id="hp-opp-fill"></div></div>
+      </div>
+    </div>
+
+    <!-- Action buttons (center top) -->
+    <div id="action-bar">
+      <button id="btn-jump" class="act-btn">JUMP</button>
+      <button id="btn-dash" class="act-btn">DASH</button>
+      <button id="btn-skill" class="act-btn skill">SKILL</button>
+    </div>
+
+    <!-- Cooldown bars stack -->
+    <div id="cooldown-stack">
+      <div class="cd-row"><span>FIRE</span><div class="cd-bar"><div id="cd-fire"></div></div></div>
+      <div class="cd-row"><span>DASH</span><div class="cd-bar"><div id="cd-dash"></div></div></div>
+      <div class="cd-row"><span>SKILL</span><div class="cd-bar"><div id="cd-skill"></div></div></div>
+    </div>
+
+    <div id="killfeed"></div>
+
+    <!-- Touch zones (visual joysticks) -->
+    <div id="pad-left"  class="pad">
+      <div class="pad-base"></div>
+      <div class="pad-stick" id="stick-left"></div>
+    </div>
+    <div id="pad-right" class="pad">
+      <div class="pad-base aim"></div>
+      <div class="pad-stick aim" id="stick-right"></div>
+    </div>
+
+    <button id="btn-leave" class="leave">×</button>
+  </div>
+
+  <!-- ============ END ============ -->
+  <div id="screen-end" class="screen hidden">
+    <div class="end-wrap">
+      <h2 id="end-title">VICTORY</h2>
+      <p id="end-sub">GG! もう一戦やる?</p>
+      <button id="btn-again" class="primary">REMATCH</button>
+      <button id="btn-home" class="ghost">タイトルへ</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
