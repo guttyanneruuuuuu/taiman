@@ -443,6 +443,7 @@ function startMatch(seed, isBotMatch) {
 
   myMesh  = buildPlayerMesh(getCharacter(state.myCharId), true);
   oppMesh = buildPlayerMesh(getCharacter(state.oppCharId), false);
+  myMesh.visible = false;
   scene.add(myMesh, oppMesh);
 
   // AI
@@ -531,8 +532,9 @@ function tick(dt) {
     }
   } else {
     const speed = myChar.speed;
-    moveX = input.mx * speed * dt;
-    moveZ = input.my * speed * dt;
+    const moveDir = rotateLocalVector(state.me.rotY, input.mx, -input.my);
+    moveX = moveDir.x * speed * dt;
+    moveZ = moveDir.z * speed * dt;
   }
 
   let nx = state.me.x + moveX;
@@ -544,11 +546,9 @@ function tick(dt) {
 
   // -------- Facing / aim --------
   if (input.aimActive && (Math.abs(input.ax) + Math.abs(input.ay) > 0.05)) {
-    state.me.rotY = Math.atan2(input.ax, input.ay);
-    state.me.aim = { active: true, dx: input.ax, dy: input.ay };
-  } else if (Math.abs(moveX) + Math.abs(moveZ) > 0.001 && state.me.dashing <= 0) {
-    state.me.rotY = Math.atan2(moveX, moveZ);
-    state.me.aim = { active: false, dx: 0, dy: 0 };
+    const aimDir = rotateLocalVector(state.me.rotY, input.ax, -input.ay);
+    state.me.rotY = Math.atan2(aimDir.x, aimDir.z);
+    state.me.aim = { active: true, dx: aimDir.x, dy: aimDir.z };
   } else {
     state.me.aim = { active: false, dx: 0, dy: 0 };
   }
@@ -580,7 +580,7 @@ function tick(dt) {
   if (state.pressDash) {
     state.pressDash = false;
     if (state.cdDash <= 0 && !state.me.skillState) {
-      let dx = input.mx, dz = input.my;
+      let { x: dx, z: dz } = rotateLocalVector(state.me.rotY, input.mx, -input.my);
       const mag = Math.hypot(dx, dz);
       if (mag < 0.1) {
         // dash forward (facing)
@@ -674,7 +674,7 @@ function tick(dt) {
   // -------- Continuous fire (hold) for SMG/Shotgun --------
   const holdToFire = (w.kind === 'smg' || w.kind === 'shotgun');
   if (holdToFire && state.cooldown === 0 && input.aimActive && !state.me.skillState) {
-    doShoot(myChar, input.ax, input.ay);
+    doShoot(myChar, state.me.aim.dx, state.me.aim.dy);
   }
   // Tap-release fire (rifle / rocket / slash)
   if (state.releaseFire && !holdToFire && state.cooldown === 0 && !state.me.skillState) {
@@ -717,13 +717,18 @@ function tick(dt) {
 
   // -------- Camera follow --------
   const portrait = window.innerHeight >= window.innerWidth;
-  const camHeight = portrait ? 18.5 : 16.5;
-  const camBack   = portrait ? 12.5 : 11;
-  const lookOffX = (state.me.aim?.active ? state.me.aim.dx : 0) * 3.2;
-  const lookOffZ = (state.me.aim?.active ? state.me.aim.dy : 0) * 3.2;
-  const camTarget = new THREE.Vector3(state.me.x + lookOffX, state.me.y * 0.3, state.me.z + lookOffZ);
-  const camPos = new THREE.Vector3(state.me.x, camHeight + state.me.y * 0.2, state.me.z + camBack);
-  camera.position.lerp(camPos, 0.16);
+  const eyeHeight = 1.45 + state.me.y * 0.4;
+  const lookDist = portrait ? 13 : 15;
+  const lookDrop = portrait ? 0.9 : 0.75;
+  const forwardX = Math.sin(state.me.rotY);
+  const forwardZ = Math.cos(state.me.rotY);
+  const camPos = new THREE.Vector3(state.me.x, eyeHeight, state.me.z);
+  const camTarget = new THREE.Vector3(
+    state.me.x + forwardX * lookDist,
+    eyeHeight - lookDrop,
+    state.me.z + forwardZ * lookDist,
+  );
+  camera.position.lerp(camPos, 0.35);
   camera.lookAt(camTarget);
 
   // -------- Aim indicator --------
@@ -1035,20 +1040,20 @@ function drawAimIndicator(char, input) {
     aimLine.userData.tip.rotation.x = -Math.PI/2;
     scene.add(aimLine.userData.tip);
   }
-  aimLine.visible = input.aimActive;
-  aimLine.userData.tip.visible = input.aimActive;
+  aimLine.visible = false;
+  aimLine.userData.tip.visible = false;
   if (!input.aimActive) {
     if (mortarPreview) mortarPreview.visible = false;
     return;
   }
 
-  let dx = input.ax, dz = input.ay;
+  let dx = state.me.aim.dx, dz = state.me.aim.dy;
   const mag = Math.hypot(dx, dz) || 1;
   dx /= mag; dz /= mag;
 
   // Special preview for mortar skill (only if currently selected char's skill is mortar and ready)
   if (char.skill.kind === 'mortar' && state.cdSkill <= 0) {
-    const dist = Math.min(14, 4 + Math.hypot(input.ax, input.ay) * 12);
+    const dist = Math.min(14, 4 + Math.hypot(state.me.aim.dx, state.me.aim.dy) * 12);
     const tx = state.me.x + dx * dist;
     const tz = state.me.z + dz * dist;
     if (!mortarPreview) {
@@ -1426,6 +1431,14 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 function lerpAngle(a, b, t) {
   const diff = ((b - a + Math.PI*3) % (Math.PI*2)) - Math.PI;
   return a + diff * t;
+}
+function rotateLocalVector(rotY, strafe, forward) {
+  const sin = Math.sin(rotY);
+  const cos = Math.cos(rotY);
+  return {
+    x: cos * strafe + sin * forward,
+    z: -sin * strafe + cos * forward,
+  };
 }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
